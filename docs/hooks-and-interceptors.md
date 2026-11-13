@@ -289,32 +289,43 @@ client.Use(mixin.AuditHook(func(ctx context.Context) string {
 
 ### Soft Delete
 
-Intercept delete operations and convert them to updates that set `deleted_at`. Requires `mixin.SoftDelete{}` on the entity.
+Turn a delete into an update that sets `deleted_at`, Ent's pattern. Requires `mixin.SoftDelete{}` on the entity and the privacy feature (for `Filter()`). One hook in the mixin serves every entity that lists it:
 
 ```go
-func SoftDeleteHook[T interface {
-    SetDeletedAt(time.Time)
-}, M interface {
-    velox.Mutation
-    SetDeletedAt(time.Time)
-}]() velox.Hook {
-    return hook.On(
-        func(next velox.Mutator) velox.Mutator {
-            return velox.MutateFunc(func(ctx context.Context, m velox.Mutation) (velox.Value, error) {
-                if typed, ok := m.(M); ok {
-                    typed.SetDeletedAt(time.Now())
-                    // Redirect the delete to an update
-                    // (entity-specific implementation required)
-                }
+type skipSoftDeleteKey struct{}
+
+// SkipSoftDelete returns a context under which a delete removes the row.
+func SkipSoftDelete(ctx context.Context) context.Context {
+    return context.WithValue(ctx, skipSoftDeleteKey{}, true)
+}
+
+func (SoftDeleteMixin) Hooks() []velox.Hook {
+    return []velox.Hook{func(next velox.Mutator) velox.Mutator {
+        return velox.MutateFunc(func(ctx context.Context, m velox.Mutation) (velox.Value, error) {
+            if !m.Op().Is(velox.OpDelete|velox.OpDeleteOne) || ctx.Value(skipSoftDeleteKey{}) != nil {
                 return next.Mutate(ctx, m)
+            }
+            mx, ok := m.(interface {
+                SetOp(velox.Op)
+                Config() runtime.Config
+                Filter() privacy.Filter
+                SetDeletedAt(time.Time)
             })
-        },
-        velox.OpDeleteOne|velox.OpDelete,
-    )
+            if !ok {
+                return nil, fmt.Errorf("unexpected mutation type %T", m)
+            }
+            mx.Filter().WhereP(sql.FieldIsNull("deleted_at")) // a deleted row stays as it is
+            mx.SetDeletedAt(time.Now())
+            mx.SetOp(velox.OpUpdate)
+            return runtime.FindMutator(m.Type())(ctx, mx.Config(), m)
+        })
+    }}
 }
 ```
 
-In practice, soft delete typically requires entity-specific hooks because update builders are typed. The `intercept.TraverseFunc` pattern (see Interceptors below) is used to exclude soft-deleted records from queries.
+Where Ent re-runs the mutation with `mx.Client().Mutate(ctx, m)`, velox uses `runtime.FindMutator` and the mutation's `Config()`: a schema package cannot import the generated client, and the config carries the builder's driver, so a soft delete inside a transaction stays in it. The re-run is a bulk update, so the delete's count is the rows it marked; `DeleteOneID` on a row already deleted reports not-found. The update runs the entity's update hooks and policy, not its delete hooks. `ON DELETE CASCADE` does not fire: a hook that wants to cascade soft-deletes the children itself. A unique index meant for live rows only needs `Where("deleted_at IS NULL")`. Pinned by `tests/integration/e2e_soft_delete_test.go`.
+
+Exclude soft-deleted rows from queries with the `intercept.TraverseFunc` pattern (see Interceptors below).
 
 ### Logging
 

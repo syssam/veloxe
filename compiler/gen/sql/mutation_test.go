@@ -49,6 +49,22 @@ func TestGenMutation_Constructor(t *testing.T) {
 	assert.Contains(t, code, "type userOption func(*UserMutation)")
 }
 
+// TestGenMutation_ConfigAccessor verifies the mutation exposes the config it
+// was built with, so a hook that changes the operation (a soft delete turning
+// a delete into an update) can re-run it through runtime.FindMutator with the
+// same driver — the transaction's, inside one.
+func TestGenMutation_ConfigAccessor(t *testing.T) {
+	helper := newMockHelper()
+	userType := createTestType("User")
+	helper.graph.Nodes = []*gen.Type{userType}
+
+	file := genMutation(helper, userType)
+	code := file.GoString()
+
+	assert.Contains(t, code, "func (m *UserMutation) Config() runtime.Config {")
+	assert.Contains(t, code, "return m.config")
+}
+
 // TestGenMutation_FieldSetGetReset verifies Set/Get/Reset are generated
 // for every field.
 func TestGenMutation_FieldSetGetReset(t *testing.T) {

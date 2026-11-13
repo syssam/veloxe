@@ -103,6 +103,19 @@ func genMutation(h gen.GeneratorHelper, t *gen.Type) *jen.File {
 		jen.Id("m").Dot("op").Op("=").Id("op"),
 	)
 
+	// Config — the runtime config the mutation was built with. Ent's hooks
+	// re-run a mutation through mx.Client().Mutate(ctx, m); velox's entity
+	// packages cannot reach the client, so a hook re-runs one through
+	// runtime.FindMutator(m.Type())(ctx, m.Config(), m) instead. The config
+	// carries the builder's driver, so inside a transaction the re-run stays
+	// in that transaction.
+	f.Comment("Config returns the runtime config the mutation was built with: its driver")
+	f.Comment("(the transaction's, inside one), hooks and schema config. A hook that changes")
+	f.Comment("the operation re-runs the mutation with runtime.FindMutator(m.Type())(ctx, m.Config(), m).")
+	f.Func().Params(jen.Id("m").Op("*").Id(mutName)).Id("Config").Params().Qual(runtimePkg, "Config").Block(
+		jen.Return(jen.Id("m").Dot("config")),
+	)
+
 	// Type — schema type literal, no storage needed.
 	f.Commentf("Type returns the schema type name of this mutation (%q).", t.Name)
 	f.Func().Params(jen.Id("m").Op("*").Id(mutName)).Id("Type").Params().String().Block(
@@ -575,7 +588,7 @@ func fieldBoundEdge(e *gen.Edge) bool {
 
 // genMutationFieldAccessors generates all methods required by the velox.Mutation interface.
 func genMutationFieldAccessors(h gen.GeneratorHelper, f *jen.File, mutName string, t *gen.Type) {
-	// Note: Op(), Type(), ID(), SetID(), SetOp() are emitted directly on the struct above.
+	// Note: Op(), Type(), ID(), SetID(), SetOp(), Config() are emitted directly on the struct above.
 
 	// Fields returns the list of set field names (reads from typed fields).
 	f.Comment("Fields returns all fields that were changed during this mutation.")

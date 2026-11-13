@@ -64,6 +64,13 @@ func (m *ArticleMutation) SetOp(op runtime.Op) {
 	m.op = op
 }
 
+// Config returns the runtime config the mutation was built with: its driver
+// (the transaction's, inside one), hooks and schema config. A hook that changes
+// the operation re-runs the mutation with runtime.FindMutator(m.Type())(ctx, m.Config(), m).
+func (m *ArticleMutation) Config() runtime.Config {
+	return m.config
+}
+
 // Type returns the schema type name of this mutation ("Article").
 func (m *ArticleMutation) Type() string {
 	return "Article"

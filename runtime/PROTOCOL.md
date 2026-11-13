@@ -78,7 +78,7 @@ Do not swap `QuerySelect` for `QueryScan` during generator refactors; the aggreg
 
 6.2. The struct carries: `op`, typed `id *IDType`, typed field pointers (`_name *string`), typed edge maps, `oldValue func(ctx)(*entity.T, error)` closure, and (for JSON-bearing entities) a local `appends` map.
 
-6.3. `Op()`, `Type()`, `ID()`, `SetID()`, `SetOp()` are emitted as methods on the concrete type.
+6.3. `Op()`, `Type()`, `ID()`, `SetID()`, `SetOp()`, `Config()` are emitted as methods on the concrete type. `Config()` returns the runtime config the mutation was built with (the driver of the transaction it runs in), so a hook that changes the operation re-runs it with `runtime.FindMutator(m.Type())(ctx, m.Config(), m)`. A hook cannot reach the generated client from a schema package.
 
 6.4. `OldXxx()` reads typed fields directly off the loaded entity via the `oldValue` closure. No `runtime.ConvertOldValue[T]` shim, no `map[string]any` intermediate.
 
