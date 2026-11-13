@@ -193,9 +193,13 @@ var (
 	)
 )
 
-// mutMethods returns the method names of mutation interface.
+// mutMethods returns the method names of mutation interface, plus the methods
+// every generated mutation declares beyond it. A field whose getter would take
+// one of these names gets a "Get" prefix instead (Field.MutationGet). Config is
+// the generated Config() runtime.Config accessor: a schema field named "config"
+// would otherwise redeclare it.
 var mutMethods = func() map[string]bool {
-	names := map[string]bool{"Client": true, "Tx": true, "Where": true, "SetOp": true}
+	names := map[string]bool{"Client": true, "Tx": true, "Where": true, "SetOp": true, "Config": true}
 	t := reflect.TypeFor[velox.Mutation]()
 	for i := range t.NumMethod() {
 		names[t.Method(i).Name] = true

@@ -3,6 +3,7 @@ package sql
 import (
 	"go/parser"
 	"go/token"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -63,6 +64,24 @@ func TestGenMutation_ConfigAccessor(t *testing.T) {
 
 	assert.Contains(t, code, "func (m *UserMutation) Config() runtime.Config {")
 	assert.Contains(t, code, "return m.config")
+}
+
+// TestGenMutation_ConfigFieldGetterIsRenamed verifies that a schema field named
+// "config" does not redeclare the Config() accessor: its getter is GetConfig,
+// the name create/update call it by (Field.MutationGet).
+func TestGenMutation_ConfigFieldGetterIsRenamed(t *testing.T) {
+	helper := newMockHelper()
+	configField := createTestField("config", field.TypeString)
+	adapterType := createTestTypeWithFields("Adapter", []*gen.Field{configField})
+	helper.graph.Nodes = []*gen.Type{adapterType}
+
+	code := genMutation(helper, adapterType).GoString()
+
+	assert.Equal(t, 1, strings.Count(code, "func (m *AdapterMutation) Config("),
+		"Config must be declared once, as the runtime.Config accessor")
+	assert.Contains(t, code, "func (m *AdapterMutation) Config() runtime.Config {")
+	assert.Contains(t, code, "func (m *AdapterMutation) GetConfig() (")
+	assert.Equal(t, "GetConfig", configField.MutationGet())
 }
 
 // TestGenMutation_FieldSetGetReset verifies Set/Get/Reset are generated

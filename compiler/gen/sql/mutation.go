@@ -251,10 +251,6 @@ func genMutationField(h gen.GeneratorHelper, f *jen.File, mutName string, t *gen
 	typedField := "_" + column  // e.g., _name, _age
 	addField := "_add" + column // e.g., _addage
 
-	// Check if field name conflicts with the mutation's own interface methods.
-	// Fields like "type" and "op" would shadow the generated Type()/Op() methods.
-	conflictsWithInterface := fieldPascal == "Type" || fieldPascal == "Op"
-
 	// SetXxx — writes the typed pointer field. Resets any pending AddXxx delta
 	// (numeric) or AppendXxx slice (JSON) so the literal Set wins — Ent parity.
 	f.Commentf("Set%s sets the %q field.", fieldPascal, column)
@@ -274,15 +270,12 @@ func genMutationField(h gen.GeneratorHelper, f *jen.File, mutName string, t *gen
 
 	// Xxx returns the field value and whether it was set.
 	// Reads from typed field — no type assertion, no panic risk.
-	getterName := fieldPascal
-	if conflictsWithInterface {
-		getterName = "Get" + fieldPascal
-	}
-	comment := "%s returns the value of the %q field in the mutation."
-	if conflictsWithInterface {
-		comment = "Get%s returns the value of the %q field in the mutation."
-	}
-	f.Commentf(comment, getterName, column)
+	// A field whose getter would take the name of one of the mutation's own
+	// methods ("type" -> Type(), "config" -> Config()) gets a "Get" prefix.
+	// fd.MutationGet() decides it, because create/update/helper call the getter
+	// by that name: deciding it here separately let the two disagree.
+	getterName := fd.MutationGet()
+	f.Commentf("%s returns the value of the %q field in the mutation.", getterName, column)
 	f.Func().Params(jen.Id("m").Op("*").Id(mutName)).Id(getterName).Params().Params(
 		jen.Id("r").Add(h.BaseType(fd)), jen.Id("exists").Bool(),
 	).Block(
